@@ -1,0 +1,398 @@
+#Update-0
+    -love.graphics.newImage(path)
+        loads an image from graphics file and stores it in an object we can draw on screen
+    -love.graphics.draw(drawable, x, y)
+        Draws an image on screen given the x and y on 2D coordinate system. Similar to drawing paddles from pong but as images this time
+    -Again be using push to handle resolution
+
+
+#Update 1 Paralax update
+    -- creating the background given the file for it is within the folder as well to reference and create an objetc of.
+    -background = love.graphics.newImage('imagename.file')
+    -local backgroundScroll = 0
+    
+    -- creating the ground 
+    -local ground = love.graphics.newImage('imagename.file')
+    -local groundScroll = 0
+
+    -- foreground will always need to be moving faster than the background is
+    -local BACKGROUND_SCROLL_SPEED = 30
+    -local GROUND_SCROLL_SPEED = 60
+
+    -- this one is to say start looping again at x position. the example jsut happens to be 413 and is not always going to be this.
+    -local BACKGROUND_LOOPING_POINT = 413
+    
+
+    -- going to also need to include the update function to actually run the paralax scrolling.
+    function love.update(dt)
+        backgroundScroll = (backgroundScroll + BACKGROUND_SCROLL_SPEED * dt) % BACKGROUND_LOOPING_POINT
+        
+        groundScroll = (groundScroll + GROUND_SCROLL_SPEED * dt) % VIRTUAL_WIDTH
+    end
+
+
+#Update 2 Bird Update
+  --creating the bird class to use moving forward
+  Bird = Class{}
+
+  function Bird:init()
+      self.image = love.graphics.newImage('bird.png')
+      --sets image width and height
+      self.width = self.image:getWidth()
+      self.height = self.image:getHeight()
+
+      self.x = VIRTUAL_WIDTH / 2 - (self.width / 2)
+      self.y = VIRTUAL_HEIGHT / 2 - (self.height / 2)
+  end
+
+  function Bird:render()
+      love.graphics.draw(self.image, self.x, self.y)
+  end
+
+
+  ---and in main.lua have
+  Class = require 'class'
+  require 'Bird'
+  local bird = Bird()
+
+    --inside of love.draw()
+    bird:render()
+
+#Update 3 Gravity
+-- will live inside of the bird Class
+
+    --set gravity to constant
+    local GRAVITY = 20
+    function Bird:update(dt)
+        self.dy = self.dy + GRAVITY * dt
+        self.y = self.y + self.dy
+    end
+    -- this applies gravity to the bird in delta time which means it's constantly experiencing 20 force or position pushed a second.
+
+#Update 4 Antigravity update
+-- This allows the bird to fight gravity briefly
+-- We'll be toggling the delta y (dy) between negative and positive values in order to create a flap/jump feel and then fall back down.
+- Remember that the 2D coordinate system origins from the top elft corner so a positive dy value makes the bird fall and a negative makes it rise.
+        (this is cause the Y value is higher at the bottom and lower at the top of the screen.)
+
+-- We're going to create a new global input table within main to track any keys pressed by the user without overloading the default love.keypressed(key) function.
+    We'll check in the Bird class as to if the use pressed the space bar without interfering with our check in main, or esc to quit.
+    In main we'll do
+        love.keyboard.keysPressed = {}
+
+-- Next is to update keypressed(key) so anytime anything is pressed it gets added to this new table. 
+  function love.keypressed(key)
+      love.keyboard.keysPressed[key] = true
+
+      if key == 'escape' then
+          love.event.quit()
+      end
+  end
+
+-- Now define a function to return true if given a key that's pressed, otherwise trips false
+        function love.keyboard.wasPressed(key)
+        if love.keyboard.keysPressed[key] then
+            return true
+        else
+            return false
+        end
+        end
+    Another way to write it could be
+        function love.keyboard.wasPressed(key)
+            return love.keyboard.keysPressed[key]
+        end
+
+-- With the input table in bird class, we now also add jumping function to it for when pressed space by setting dy to engative value.
+  function Bird:update(dt)
+      self.dy = self.dy + GRAVITY * dt
+
+      if love.keyboard.wasPressed('space') then
+          self.dy = -5
+      end
+
+      self.y = self.y + self.dy
+  end
+
+--Lastly, we clear the table after each frame in love.update()
+      love.keyboard.keysPressed = {}
+
+
+#update 5 inifinite pipes
+-- Going to create a pipe sprit within our new pipe class
+-- Inside Pipe class, create an init method that spawns a pipe at a random vertical position to the right edge and withing the bottom quarter of the screen
+    Update method that scrolls the pipe  to the left based on previous position, negative scroll value, and dt.
+    And last we'll create a function to render the pipe.
+      Pipe = Class{}
+  local PIPE_IMAGE = love.graphics.newImage('pipe.png')
+  local PIPE_SCROLL = -60
+
+  function Pipe:init()
+      self.x = VIRTUAL_WIDTH
+      self.y = math.random(VIRTUAL_HEIGHT / 4, VIRTUAL_HEIGHT - 10)
+      self.width = PIPE_IMAGE:getWidth()
+  end
+
+  function Pipe:update(dt)
+      self.x = self.x + PIPE_SCROLL * dt
+  end
+
+  function Pipe:render()
+      love.graphics.draw(PIPE_IMAGE, math.floor(self.x + 0.5), math.floor(self.y))
+  end
+    Notice we aren't creating multiple pipes but rerendering the same pipe sprite. This saves memory
+
+-- We'll also need a spawn timer to to create in Main.
+    local spawnTimer = 0
+
+-- and then also make it in update
+  spawnTimer = spawnTimer + dt
+
+  if spawnTimer > 2 then
+      table.insert(pipes, Pipe())
+      print('Added new pipe!')
+      spawnTimer = 0
+  end
+  ...
+  for k, pipe in pairs(pipes) do
+      pipe:update(dt)
+
+      if pipe.x < -pipe.width then
+          table.remove(pipes, k)
+      end
+  end
+    Spawn time is set for every 2 seconds currently. And removed from the table once no longer visible past the left edge of screen.
+
+-- Lastly, we'll render ing love.draw for each pipe currently on the table.
+    for k, pipe in pairs(pipes) do
+        pipe:render()
+    end
+
+
+
+#update 6 Pipe pair update
+--Now looking to spawn a pair of pipes instead of just once, so we'll create a PipePair class to do that
+      PipePair = Class{}
+
+  local GAP_HEIGHT = 90
+
+  function PipePair:init(y)
+      self.x = VIRTUAL_WIDTH + 32
+      self.y = y
+
+      self.pipes = {
+          ['upper'] = Pipe('top', self.y),
+          ['lower'] = Pipe('bottom', self.y + PIPE_HEIGHT + GAP_HEIGHT)
+      }
+
+      self.remove = false
+  end
+
+  function PipePair:update(dt)
+      if self.x > -PIPE_WIDTH then
+          self.x = self.x - PIPE_SPEED * dt
+          self.pipes['lower'].x = self.x
+          self.pipes['upper'].x = self.x
+      else
+          self.remove = true
+      end
+  end
+
+  function PipePair:render()
+      for k, pipe in pairs(self.pipes) do
+          pipe:render()
+      end
+  end
+
+-- PipePair class will replace a lot of the logic within main that existed for the pipe. Flow of main need not change drastically but now accomidate pairs
+
+--We can mimic the pipe class to an extent, as long as we provide logic to a resonable gap heigh between the pipes. And accruate y values for sprites
+
+
+#update 7 Collision
+-- We introduce collision and pausing the game when a collison occurs.
+
+-- Pausing the game is handled by toggling a local boolean variable scrolling (checked in love.update(dt)) upon collision detection.
+-- Collision detection is handled within the Bird class. (Similar to AABB collision detection from Pong) but with some leeway in order to give the user a littlre more leniency.
+  function Bird:collides(pipe)
+      if (self.x + 2) + (self.width - 4) >= pipe.x and self.x + 2 <= pipe.x + PIPE_WIDTH then
+          if (self.y + 2) + (self.height - 4) >= pipe.y and self.y + 2 <= pipe.y + PIPE_HEIGHT then
+              return true
+          end
+      end
+
+      return false
+  end
+
+
+#update 8 The state Machine
+-- Modularizes our code as a State Machine.
+            Title Screen State -> Countdown state -> Play State -> Score State
+            Score state loops back to dountdown state.
+
+-- Manage all game states using a StateMachince module to handle the logic of init and transitioning between modes 
+-- Title Screen state will transition into Play state via keyboard input.
+    The Base State is a skeleton for the other states, it defines empty methods and passes them on via inheritance.
+--Of note in Main, is the creation of gStateMachine table to hold function calls to our different states.
+        ...
+        require 'StateMachine'
+        require 'states/BaseState'
+        require 'states/PlayState'
+        require 'states/TitleScreenState'
+        ...
+        function love.load()
+        ...
+        gStateMachine = StateMachine {
+            ['title'] = function() return TitleScreenState() end,
+            ['play'] = function() return PlayState() end,
+            ['score'] = function() return ScoreState() end
+        }
+        gStateMachine:change('title')
+        ...
+        end
+    Respenting our game states as modules, we vastly simplify logic in main.
+
+-- Careful with new modules, especially comments to understand main better and how it was simplified.
+    Play state now contains a lot of what was in main
+
+
+#update 9 Scoring
+--Discussed ScoreState previously but now we're implementing it 
+
+--Once a collision is detected, PlayState transitions to ScoreState, which displays final score and transitions back to the PlayStateif pressed enter.
+  -Note additioin to PlayState:update() function to implement this transition logic
+    for k, pair in pairs(self.pipePairs) do
+      for l, pipe in pairs(pair.pipes) do
+          if self.bird:collides(pipe) then
+              gStateMachine:change('score', {
+                  score = self.score
+              })
+          end
+      end
+  end
+
+  if self.bird.y > VIRTUAL_HEIGHT - 15 then
+      gStateMachine:change('score', {
+          score = self.score
+      })
+  end
+
+-- The score is also tracked in PlayState:update() by incrementing a score counter each time the bird flies through a PipePair.
+    for k, pair in pairs(self.pipePairs) do
+      if not pair.scored then
+          if pair.x + PIPE_WIDTH < self.bird.x then
+              self.score = self.score + 1
+              pair.scored = true
+          end
+      end
+
+      pair:update(dt)
+    end
+    
+--Logic for displaying score on screen during PlayState is added to PlayState:render() function
+        function PlayState:render()
+        ...
+        love.graphics.setFont(flappyFont)
+        love.graphics.print('Score: ' .. tostring(self.score), 8, 8)
+        ...
+        end
+
+--The ScoreState itself is implemented as an addition module with logical implements for the empty methods in BaseState
+      ScoreState = Class{__includes = BaseState}
+
+  function ScoreState:enter(params)
+      self.score = params.score
+  end
+
+  function ScoreState:update(dt)
+      if love.keyboard.wasPressed('enter') or love.keyboard.wasPressed('return') then
+          gStateMachine:change('play')
+      end
+  end
+
+  function ScoreState:render()
+      love.graphics.setFont(flappyFont)
+      love.graphics.printf('Oof! You lost!', 0, 64, VIRTUAL_WIDTH, 'center')
+      love.graphics.setFont(mediumFont)
+      love.graphics.printf('Score: ' .. tostring(self.score), 0, 100, VIRTUAL_WIDTH, 'center')
+      love.graphics.printf('Press Enter to Play Again!', 0, 160, VIRTUAL_WIDTH, 'center')
+  end
+
+
+
+#update 10 Countdown update
+-- Introducing the CountdownState, which gives the players a few seconds to get ready before starts PlayState
+
+-- First is to add CountdownState to global state machine in main.
+        ...
+        require 'states/CountdownState'
+        ...
+        function love.load()
+        ...
+        gStateMachine = StateMachine {
+            ...
+            ['countdown'] = function() return CountdownState() end,
+            ...
+        }
+        ...
+        end
+
+-- CountdownState is implemented as another module and it merely displays a 3 sec coundown on screen before starts.
+        CountdownState = Class{__includes = BaseState}
+
+        COUNTDOWN_TIME = 0.75
+
+        function CountdownState:init()
+            self.count = 3
+            self.timer = 0
+        end
+
+        function CountdownState:update(dt)
+            self.timer = self.timer + dt
+
+            if self.timer > COUNTDOWN_TIME then
+                self.timer = self.timer % COUNTDOWN_TIME
+                self.count = self.count - 1
+
+                if self.count == 0 then
+                    gStateMachine:change('play')
+                end
+            end
+        end
+
+        function CountdownState:render()
+            love.graphics.setFont(hugeFont)
+            love.graphics.printf(tostring(self.count), 0, 120, VIRTUAL_WIDTH, 'center')
+        end
+
+--Modifying code in TitleScreenState such that TitleScreenState transitions to CountdownState rather than directly to PlayState
+
+--Then in CountdownState.lua we transition to PlayState once the countdown hits 0
+
+--In PlayState, we ensure that upon collision, we transition to ScoreState.
+
+--Finally in ScoreState.lua we transition back to CountdownState on keyboard input.
+
+
+#Update 11 Audio
+--We add sounds table in love.load(), taking care to include the sound files we reference in our project directory, then set music sound to loop indefiniterly and begin playing.
+        sounds = {
+            ['jump'] = love.audio.newSource('jump.wav', 'static'),
+            ['explosion'] = love.audio.newSource('explosion.wav', 'static'),
+            ['hurt'] = love.audio.newSource('hurt.wav', 'static'),
+            ['score'] = love.audio.newSource('score.wav', 'static'),
+            ['music'] = love.audio.newSource('marios_way.mp3', 'static')
+        }
+
+        sounds['music']:setLooping(true)
+        sounds['music']:play()
+
+--Lastly, we play the remaining sound effects in the PlayState module for jumps, score, increases, collisions, etc...
+
+
+
+#update 12 Mouse Update
+-- 
+
+    -love.mousepressed(x, y, button)
+        Callback fired every time a mouse button is presed.
+        Also give the x & y of where the mosue cursor was when it was clicked.
